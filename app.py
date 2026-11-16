@@ -121,6 +121,18 @@ def create_app(database=None):
                           updated_at=? WHERE id=?''', (*values, timestamp(), identifier))
             return jsonify(story(db, identifier))
 
+    @app.patch('/api/stories/<int:identifier>/status')
+    def change_status(identifier):
+        data = request.get_json()
+        if not isinstance(data, dict) or data.get('status') not in STATUSES:
+            raise ValueError('Staatus peab olema todo, doing või done.')
+        with connect() as db:
+            if story(db, identifier) is None:
+                return jsonify(error='Sellist lugu ei leitud.'), 404
+            db.execute('UPDATE stories SET status=?,updated_at=? WHERE id=?',
+                       (data['status'], timestamp(), identifier))
+            return jsonify(story(db, identifier))
+
     return app
 
 

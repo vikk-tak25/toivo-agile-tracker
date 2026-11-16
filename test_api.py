@@ -29,6 +29,21 @@ class StoryAPI(unittest.TestCase):
         self.assertEqual(other.delete(f'/api/stories/{identifier}').status_code, 204)
         self.assertEqual(other.get(f'/api/stories/{identifier}').status_code, 404)
 
+    def test_status_changes_and_restart(self):
+        identifier = self.add().json['id']
+        url = f'/api/stories/{identifier}/status'
+        for status in ['doing', 'done', 'todo']:
+            response = self.client.patch(url, json={'status': status})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json['status'], status)
+            self.assertEqual(response.json['title'], self.data['title'])
+            self.assertEqual(create_app(self.path).test_client().get(
+                f'/api/stories/{identifier}').json['status'], status)
+        for data in [{}, [], {'status': 'invalid'}, {'status': None}]:
+            self.assertEqual(self.client.patch(url, json=data).status_code, 400)
+        self.assertEqual(self.client.patch('/api/stories/999/status',
+                         json={'status': 'done'}).status_code, 404)
+
     def test_bad_points(self):
         for value in [None, '', -1, 1.5, True, '3', 1000001]:
             with self.subTest(value=value):
