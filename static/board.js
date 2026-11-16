@@ -120,7 +120,33 @@ function card(story) {
     down.setAttribute('aria-label', `Liiguta lugu ${story.id} alla`);
     up.disabled = index === 0 || reorderPending;
     down.disabled = index === order.length - 1 || reorderPending;
-    controls.append(element('span', '⠿ Lohista'), up, down);
+    const handle = element('span', '⠿ Lohista', 'drag-handle');
+    // Pointer capture keeps the handle reliable with mouse and touch input.
+    handle.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || reorderPending) return;
+      event.preventDefault();
+      handle.setPointerCapture(event.pointerId);
+      const start = {x: event.clientX, y: event.clientY};
+      let moved = false;
+      handle.onpointermove = move => {
+        moved ||= Math.hypot(move.clientX - start.x, move.clientY - start.y) > 6;
+        if (moved) node.classList.add('dragging');
+      };
+      const cleanup = () => {
+        node.classList.remove('dragging');
+        handle.onpointermove = null; handle.onpointerup = null; handle.onpointercancel = null;
+      };
+      handle.onpointercancel = cleanup;
+      handle.onpointerup = end => {
+        cleanup();
+        if (!moved) return;
+        const target = document.elementFromPoint(end.clientX, end.clientY);
+        if (!target?.closest('.column.todo')) return;
+        const card = target.closest('.card');
+        moveBacklog(story.id, card ? Number(card.dataset.id) : null).catch(showError);
+      };
+    });
+    controls.append(handle, up, down);
     node.append(controls);
   }
   return node;
