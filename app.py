@@ -85,6 +85,37 @@ def create_app(database=None):
     def http_error(error):
         return jsonify(error=error.description), error.code
 
+    @app.route('/api/stories', methods=['GET', 'POST'])
+    def collection():
+        with connect() as db:
+            if request.method == 'GET':
+                ids = db.execute('SELECT id FROM stories ORDER BY priority,id').fetchall()
+                return jsonify([story(db, row['id']) for row in ids])
+            values = validate(request.get_json())
+            now = timestamp()
+            priority = db.execute('SELECT COALESCE(MAX(priority),0)+1 FROM stories').fetchone()[0]
+            cursor = db.execute('''INSERT INTO stories(title,description,status,points,criteria,
+                                priority,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)''',
+                                (*values, priority, now, now))
+            result = story(db, cursor.lastrowid)
+            return jsonify(result), 201, {'Location': f"/api/stories/{result['id']}"}
+
+    @app.route('/api/stories/<int:identifier>', methods=['GET', 'PUT', 'DELETE'])
+    def item(identifier):
+        with connect() as db:
+            current = story(db, identifier)
+            if current is None:
+                return jsonify(error='Sellist lugu ei leitud.'), 404
+            if request.method == 'GET':
+                return jsonify(current)
+            if request.method == 'DELETE':
+                db.execute('DELETE FROM stories WHERE id=?', (identifier,))
+                return '', 204
+            values = validate(request.get_json())
+            db.execute('''UPDATE stories SET title=?,description=?,status=?,points=?,criteria=?,
+                          updated_at=? WHERE id=?''', (*values, timestamp(), identifier))
+            return jsonify(story(db, identifier))
+
     return app
 
 
