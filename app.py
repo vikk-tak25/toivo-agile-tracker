@@ -5,7 +5,7 @@ import sqlite3
 from datetime import datetime, timezone
 from contextlib import contextmanager
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 from werkzeug.exceptions import HTTPException
 
 STATUSES = ('todo', 'doing', 'done')
@@ -147,6 +147,10 @@ def create_app(database=None):
                                 (identifier, text.strip(), now))
             db.execute('UPDATE stories SET updated_at=? WHERE id=?', (now, identifier))
             return jsonify(id=cursor.lastrowid, text=text.strip(), createdAt=now), 201
+
+    @app.get('/')
+    def board():
+        return render_template('index.html')
 
     return app
 
