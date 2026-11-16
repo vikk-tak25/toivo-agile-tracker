@@ -1,3 +1,6 @@
+from contextlib import closing
+from datetime import datetime
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,6 +46,25 @@ class StoryAPI(unittest.TestCase):
             self.assertEqual(self.client.patch(url, json=data).status_code, 400)
         self.assertEqual(self.client.patch('/api/stories/999/status',
                          json={'status': 'done'}).status_code, 404)
+
+    def test_comments_persist_and_cascade(self):
+        identifier = self.add().json['id']
+        url = f'/api/stories/{identifier}/comments'
+        response = self.client.post(url, json={'text': '  Arutame homme.  '})
+        self.assertEqual(response.status_code, 201)
+        comment = response.json
+        self.assertEqual(comment['text'], 'Arutame homme.')
+        self.assertEqual(datetime.fromisoformat(comment['createdAt']).utcoffset().total_seconds(), 0)
+        other = create_app(self.path).test_client()
+        self.assertEqual(other.get(f'/api/stories/{identifier}').json['comments'], [comment])
+        second = other.post(url, json={'text': 'Valmis.'}).json
+        self.assertGreater(second['id'], comment['id'])
+        for data in [{}, [], {'text': ''}, {'text': '  '}, {'text': 1}, {'text': 'x' * 10001}]:
+            self.assertEqual(other.post(url, json=data).status_code, 400)
+        self.assertEqual(other.post('/api/stories/999/comments', json={'text': 'Tere'}).status_code, 404)
+        self.assertEqual(other.delete(f'/api/stories/{identifier}').status_code, 204)
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM comments').fetchone()[0], 0)
 
     def test_bad_points(self):
         for value in [None, '', -1, 1.5, True, '3', 1000001]:
