@@ -5,6 +5,8 @@ const editor = document.querySelector('#editor');
 const form = document.querySelector('#story-form');
 const details = document.querySelector('#details');
 let stories = [];
+let draggedId = null;
+let reorderPending = false;
 
 function element(tag, text, className) {
   const node = document.createElement(tag);
@@ -50,6 +52,19 @@ function render() {
     const heading = element('h3');
     heading.append(element('span', '', 'dot'), element('span', title), element('span', String(visible.length), 'count'));
     column.append(heading);
+    if (status === 'todo' && !query) {
+      column.addEventListener('dragover', event => {
+        if (draggedId === null || reorderPending) return;
+        event.preventDefault(); event.dataTransfer.dropEffect = 'move';
+      });
+      column.addEventListener('drop', event => {
+        if (draggedId === null || reorderPending) return;
+        event.preventDefault();
+        const target = event.target.closest('.card');
+        moveBacklog(draggedId, target ? Number(target.dataset.id) : null).catch(showError);
+        draggedId = null;
+      });
+    }
     const list = element('div', undefined, 'cards');
     for (const story of visible) list.append(card(story));
     if (!visible.length) list.append(element('p', query ? 'Otsingule vastavaid lugusid pole.' : 'Siin on ruumi järgmisele loole.', 'empty'));
@@ -60,6 +75,18 @@ function render() {
 function card(story) {
   const node = element('article', undefined, 'card');
   node.dataset.id = story.id;
+  if (story.status === 'todo' && !document.querySelector('#search').value) {
+    node.draggable = true;
+    node.title = 'Lohista backlogi järjekorra muutmiseks';
+    node.addEventListener('dragstart', event => {
+      if (reorderPending) { event.preventDefault(); return; }
+      draggedId = story.id;
+      event.dataTransfer.setData('text/plain', String(story.id));
+      event.dataTransfer.effectAllowed = 'move';
+      node.classList.add('dragging');
+    });
+    node.addEventListener('dragend', () => { draggedId = null; node.classList.remove('dragging'); });
+  }
   const meta = element('div', undefined, 'meta');
   meta.append(element('span', `LUGU #${story.id}`), element('span', `${story.points} p`, 'points'));
   node.append(meta, element('h4', story.title));
@@ -83,7 +110,57 @@ function card(story) {
   });
   actions.append(select);
   node.append(actions);
+  if (story.status === 'todo' && !document.querySelector('#search').value) {
+    const order = stories.filter(s => s.status === 'todo').map(s => s.id);
+    const index = order.indexOf(story.id);
+    const controls = element('div', undefined, 'order-actions');
+    const up = button('↑ Üles', () => moveBacklog(story.id, order[index - 1]));
+    const down = button('↓ Alla', () => moveBacklog(story.id, order[index + 2] ?? null));
+    up.setAttribute('aria-label', `Liiguta lugu ${story.id} üles`);
+    down.setAttribute('aria-label', `Liiguta lugu ${story.id} alla`);
+    up.disabled = index === 0 || reorderPending;
+    down.disabled = index === order.length - 1 || reorderPending;
+    const handle = element('span', '⠿ Lohista', 'drag-handle');
+    // Pointer capture keeps the handle reliable with mouse and touch input.
+    handle.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || reorderPending) return;
+      event.preventDefault();
+      handle.setPointerCapture(event.pointerId);
+      const start = {x: event.clientX, y: event.clientY};
+      let moved = false;
+      handle.onpointermove = move => {
+        moved ||= Math.hypot(move.clientX - start.x, move.clientY - start.y) > 6;
+        if (moved) node.classList.add('dragging');
+      };
+      const cleanup = () => {
+        node.classList.remove('dragging');
+        handle.onpointermove = null; handle.onpointerup = null; handle.onpointercancel = null;
+      };
+      handle.onpointercancel = cleanup;
+      handle.onpointerup = end => {
+        cleanup();
+        if (!moved) return;
+        const target = document.elementFromPoint(end.clientX, end.clientY);
+        if (!target?.closest('.column.todo')) return;
+        const card = target.closest('.card');
+        moveBacklog(story.id, card ? Number(card.dataset.id) : null).catch(showError);
+      };
+    });
+    controls.append(handle, up, down);
+    node.append(controls);
+  }
   return node;
+}
+async function moveBacklog(id, beforeId) {
+  if (reorderPending || id === beforeId) return;
+  const ids = stories.filter(s => s.status === 'todo' && s.id !== id).map(s => s.id);
+  const index = beforeId === null ? ids.length : ids.indexOf(beforeId);
+  if (index < 0) return;
+  ids.splice(index, 0, id);
+  reorderPending = true;
+  try { await api('/reorder', 'PATCH', {ids}); await refresh(); }
+  catch (error) { await refresh(); throw error; }
+  finally { reorderPending = false; render(); }
 }
 function editStory(story = null) {
   form.reset();
