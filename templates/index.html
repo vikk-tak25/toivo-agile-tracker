@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="et">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Agile Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='board.js') }}" defer></script>
+</head>
+<body>
+<header><div><p class="eyebrow">TÖÖRUUM / TAK25</p><h1>Agile Tracker<span>.</span></h1><p>Väikesed sammud. Nähtav edasiminek.</p></div><button id="new-story">+ Uus lugu</button></header>
+<main>
+  <div class="toolbar"><div><h2>Projekti töölaud</h2><p id="summary" aria-live="polite">Laadin lugusid…</p></div><label>Otsi lugusid<input id="search" type="search" placeholder="Pealkiri või kirjeldus"></label></div>
+  <p id="error" role="alert" hidden></p>
+  <section id="board" class="board" aria-label="Kanban-laud"></section>
+</main>
+<dialog id="editor">
+  <form id="story-form">
+    <div class="dialog-heading"><h2 id="editor-title">Uus lugu</h2><button type="button" class="quiet" id="close-editor" aria-label="Sulge">✕</button></div>
+    <input name="id" type="hidden">
+    <label>Pealkiri<input name="title" required maxlength="200"></label>
+    <label>Kirjeldus<textarea name="description" rows="3" maxlength="10000"></textarea></label>
+    <div class="form-row"><label>Punktid<input name="points" type="number" min="0" max="1000000" step="1" required></label><label>Staatus<select name="status"><option value="todo">Todo / Backlog</option><option value="doing">Doing</option><option value="done">Done</option></select></label></div>
+    <label>Vastuvõtutingimused<textarea name="criteria" rows="4" required placeholder="Iga tingimus eraldi real"></textarea></label>
+    <p id="form-error" role="alert" hidden></p>
+    <div class="actions"><button type="button" class="quiet" id="cancel-editor">Tühista</button><button type="submit">Salvesta lugu</button></div>
+  </form>
+</dialog>
+<dialog id="details"><div id="detail-content"></div><div class="actions"><button id="close-details" class="quiet">Sulge</button></div></dialog>
+</body>
+</html>
