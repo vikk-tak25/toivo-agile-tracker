@@ -3,7 +3,7 @@ import json
 import os
 import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
+from contextlib import contextmanager
 
 from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
@@ -42,11 +42,16 @@ def create_app(database=None):
     path = str(database or os.environ.get('TRACKER_DB', 'tracker.sqlite3'))
     app.config['MAX_CONTENT_LENGTH'] = 256 * 1024
 
+    @contextmanager
     def connect():
         db = sqlite3.connect(path, timeout=10)
         db.row_factory = sqlite3.Row
         db.execute('PRAGMA foreign_keys=ON')
-        return db
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
 
     with connect() as db:
         db.executescript('''
