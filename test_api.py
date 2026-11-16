@@ -66,6 +66,29 @@ class StoryAPI(unittest.TestCase):
         with closing(sqlite3.connect(self.path)) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM comments').fetchone()[0], 0)
 
+    def test_reorder_persistence_and_invalid_requests(self):
+        ids = [self.add(title=f'Lugu {i}').json['id'] for i in range(3)]
+        doing = self.add(status='doing').json['id']
+        url = '/api/stories/reorder'
+        ordered = list(reversed(ids))
+        response = self.client.patch(url, json={'ids': ordered})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([s['id'] for s in response.json], ordered)
+        self.assertEqual([s['priority'] for s in response.json], [1, 2, 3])
+        for data in [{}, [], {'ids': []}, {'ids': ids[:2]}, {'ids': ids + [doing]},
+                     {'ids': [ids[0], ids[0], ids[2]]}, {'ids': [True, *ids[1:]]},
+                     {'ids': ['1', *ids[1:]]}, {'ids': [999, *ids[1:]]}]:
+            with self.subTest(data=data):
+                self.assertEqual(self.client.patch(url, json=data).status_code, 400)
+                current = self.client.get('/api/stories').json
+                self.assertEqual([s['id'] for s in current if s['status'] == 'todo'], ordered)
+        other = create_app(self.path).test_client()
+        self.assertEqual([s['id'] for s in other.get('/api/stories').json
+                          if s['status'] == 'todo'], ordered)
+
+    def test_empty_backlog_order(self):
+        self.assertEqual(self.client.patch('/api/stories/reorder', json={'ids': []}).json, [])
+
     def test_bad_points(self):
         for value in [None, '', -1, 1.5, True, '3', 1000001]:
             with self.subTest(value=value):

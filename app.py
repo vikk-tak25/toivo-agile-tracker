@@ -148,6 +148,24 @@ def create_app(database=None):
             db.execute('UPDATE stories SET updated_at=? WHERE id=?', (now, identifier))
             return jsonify(id=cursor.lastrowid, text=text.strip(), createdAt=now), 201
 
+    @app.patch('/api/stories/reorder')
+    def reorder():
+        data = request.get_json()
+        ids = data.get('ids') if isinstance(data, dict) else None
+        if (not isinstance(ids, list) or any(type(i) is not int for i in ids)
+                or len(set(ids)) != len(ids)):
+            raise ValueError('Järjekord peab olema kordusteta täisarvuliste loo-ID-de loend.')
+        with connect() as db:
+            # Lock before reading: concurrent story changes must not invalidate the set.
+            db.execute('BEGIN IMMEDIATE')
+            expected = {r[0] for r in db.execute("SELECT id FROM stories WHERE status='todo'")}
+            if set(ids) != expected:
+                raise ValueError('Saada kõik ja ainult backlogi lugude ID-d. Värskenda töölauda.')
+            now = timestamp()
+            db.executemany('UPDATE stories SET priority=?,updated_at=? WHERE id=?',
+                           [(rank, now, identifier) for rank, identifier in enumerate(ids, 1)])
+            return jsonify([story(db, identifier) for identifier in ids])
+
     @app.get('/')
     def board():
         return render_template('index.html')
